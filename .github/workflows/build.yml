@@ -131,6 +131,23 @@ jobs:
               old_key_block,
               new_key_block,
           )
+          old_scale_block = (
+              "    *x = (p->x - p->xi.minimum) * (fb_width - 1) / (p->xi.maximum - p->xi.minimum);\n"
+              "    *y = (p->y - p->yi.minimum) * (fb_height - 1) / (p->yi.maximum - p->yi.minimum);\n"
+          )
+          new_scale_block = (
+              "    if (p->xi.maximum > fb_width * 4 && p->yi.maximum > fb_height * 4 &&\n"
+              "        p->x >= 0 && p->x < fb_width && p->y >= 0 && p->y < fb_height) {\n"
+              "        *x = p->x;\n"
+              "        *y = p->y;\n"
+              "    } else {\n"
+              "        *x = (p->x - p->xi.minimum) * (fb_width - 1) / (p->xi.maximum - p->xi.minimum);\n"
+              "        *y = (p->y - p->yi.minimum) * (fb_height - 1) / (p->yi.maximum - p->yi.minimum);\n"
+              "    }\n"
+          )
+          if old_scale_block not in text:
+              raise SystemExit("events.cpp touch scale block not found")
+          text = text.replace(old_scale_block, new_scale_block)
           events.write_text(text)
 
           gui = Path("bootable/recovery/gui/gui.cpp")
