@@ -46,7 +46,17 @@ jobs:
 
       - name: Cleanup
         run: |
-          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet
+          sudo rm -rf \
+            /opt/hostedtoolcache \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            /usr/local/share/powershell \
+            /usr/local/lib/node_modules \
+            "$HOME/.cache"
+          docker system prune -af || true
           df -h
 
       - name: Install packages
@@ -76,7 +86,7 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: twrp16-${{ github.event.inputs.DEVICE_NAME }}
-          max-size: 2G
+          max-size: 1G
 
       - name: Sync source
         run: |
