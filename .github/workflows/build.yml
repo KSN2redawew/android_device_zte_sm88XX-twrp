@@ -1,0 +1,107 @@
+name: TWRP 16 Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      TWRP_MANIFEST_URL:
+        description: TWRP manifest URL
+        default: https://github.com/TWRP-Test/platform_manifest_twrp_aosp
+        required: true
+      TWRP_MANIFEST_BRANCH:
+        description: TWRP manifest branch
+        default: twrp-16.0
+        required: true
+      DEVICE_PATH:
+        description: Device tree path under device/
+        default: zte/sm88XX
+        required: true
+      DEVICE_NAME:
+        description: Device codename
+        default: sm88XX
+        required: true
+      LUNCH_TARGET:
+        description: Lunch suffix after twrp_
+        default: sm88XX-aosp_current-eng
+        required: true
+      BUILD_PARTITION:
+        description: Build target without image suffix
+        default: recovery
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Show build info
+        run: |
+          echo "Device path: device/${{ github.event.inputs.DEVICE_PATH }}"
+          echo "Lunch: twrp_${{ github.event.inputs.LUNCH_TARGET }}"
+          echo "Build target: ${{ github.event.inputs.BUILD_PARTITION }}image"
+          echo "Run: ${{ github.run_id }}"
+
+      - name: Cleanup
+        run: |
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet
+          df -h
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev \
+            lib32z1-dev libelf-dev liblz4-tool libncurses-dev libsdl1.2-dev \
+            libssl-dev libxml2 libxml2-utils lzop pngcrush python3 rsync \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo > "$HOME/bin/repo"
+          chmod a+x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: twrp16-${{ github.event.inputs.DEVICE_NAME }}
+          max-size: 2G
+
+      - name: Sync source
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          repo init --depth=1 -u "${{ github.event.inputs.TWRP_MANIFEST_URL }}" -b "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}"
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j"$(nproc)"
+
+      - name: Check out device tree
+        uses: actions/checkout@v4
+        with:
+          path: device/${{ github.event.inputs.DEVICE_PATH }}
+
+      - name: Build TWRP
+        run: |
+          set -e
+          export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
+          source build/envsetup.sh
+          lunch "twrp_${{ github.event.inputs.LUNCH_TARGET }}"
+          m "${{ github.event.inputs.BUILD_PARTITION }}image"
+          mkdir -p artifacts
+          cp "out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_PARTITION }}.img" \
+             "artifacts/TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_PARTITION }}-${{ github.run_id }}.img"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_PARTITION }}-${{ github.run_id }}
+          path: artifacts/*.img
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: twrp-${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_PARTITION }}-${{ github.run_id }}
+          name: TWRP 3.7.1-16 ${{ github.event.inputs.DEVICE_NAME }} ${{ github.event.inputs.BUILD_PARTITION }} ${{ github.run_id }}
+          files: artifacts/*.img
