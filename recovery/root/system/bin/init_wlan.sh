@@ -68,6 +68,6 @@ ap_scan=1
 EOF
 chmod 0644 "$WPA_CONF"
 
-if ! pidof wpa_supplicant >/dev/null 2>&1 && [ -x "$WPA_SUPP" ]; then
-    "$WPA_SUPP" -B -iwlan0 -Dnl80211 -c"$WPA_CONF" -O"$CTRL_DIR" >/tmp/recovery/wpa_supplicant.log 2>&1 || true
+if ! pidof wpa_supplicant_recovery >/dev/null 2>&1 && [ -x "$WPA_SUPP" ]; then
+    exec "$WPA_SUPP" -iwlan0 -Dnl80211 -c"$WPA_CONF" -O"$CTRL_DIR"
 fi
