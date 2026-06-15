@@ -96,7 +96,7 @@ jobs:
       - name: Setup swap
         run: |
           sudo swapoff -a || true
-          sudo fallocate -l 8G /swapfile
+          sudo fallocate -l 24G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
