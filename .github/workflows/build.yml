@@ -43,6 +43,19 @@ jobs:
           echo "Lunch: twrp_${{ github.event.inputs.LUNCH_TARGET }}"
           echo "Build target: ${{ github.event.inputs.BUILD_PARTITION }}image"
           echo "Run: ${{ github.run_id }}"
+          df -h
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 1024
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
 
       - name: Cleanup
         run: |
@@ -87,12 +100,9 @@ jobs:
 
       - name: Setup swap
         run: |
-          sudo swapoff -a || true
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
           free -h
+          swapon --show || true
+          df -h
 
       - name: Sync source
         run: |
