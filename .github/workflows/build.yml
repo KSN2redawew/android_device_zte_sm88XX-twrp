@@ -96,10 +96,26 @@ jobs:
 
       - name: Sync source
         run: |
+          set -e
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           repo init --depth=1 -u "${{ github.event.inputs.TWRP_MANIFEST_URL }}" -b "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}"
-          repo sync -c --force-sync --no-clone-bundle --no-tags -j"$(nproc)"
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j4 &
+          sync_pid=$!
+          (
+            while kill -0 "${sync_pid}" 2>/dev/null; do
+              echo "Repo sync still running at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              sleep 300
+            done
+          ) &
+          heartbeat_pid=$!
+          set +e
+          wait "${sync_pid}"
+          sync_status=$?
+          kill "${heartbeat_pid}" 2>/dev/null || true
+          wait "${heartbeat_pid}" 2>/dev/null || true
+          set -e
+          test "${sync_status}" -eq 0
 
       - name: Restore wpa_supplicant source
         run: |
