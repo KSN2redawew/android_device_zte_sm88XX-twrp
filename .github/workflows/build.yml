@@ -247,7 +247,7 @@ jobs:
           set -e
           mkdir -p artifacts
           export USE_CCACHE=0
-          export SOONG_UI_NINJA_ARGS="-j2"
+          export SOONG_UI_NINJA_ARGS="-j1"
           source build/envsetup.sh
           lunch "twrp_${{ github.event.inputs.LUNCH_TARGET }}"
           {
@@ -255,7 +255,7 @@ jobs:
             df -h
             echo "Memory before build:"
             free -h
-            m -j2 "${{ github.event.inputs.BUILD_PARTITION }}image"
+            m -j1 "${{ github.event.inputs.BUILD_PARTITION }}image"
             echo "Disk after build:"
             df -h
             echo "Memory after build:"
