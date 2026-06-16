@@ -37,6 +37,7 @@ Works:
 - [X] Flashing
 - [X] Haptic feedback / vibration
 - [X] MTP
+- [X] ADB sideload mode
 - [X] Touchscreen
 - [X] USB OTG
 - [X] Wi-Fi
@@ -45,7 +46,7 @@ Works:
 
 Needs more testing:
 
-- [ ] Sideload
+- [ ] Full sideload ZIP installation flow
 
 ## Install
 
@@ -70,3 +71,5 @@ On the tested NX809J unit, flashing the active recovery slot was enough. No extr
 - Fastbootd was tested successfully.
 - Wi-Fi scanning, WPA2 connection, DHCP, DNS, and network access were tested in TWRP.
 - Haptic feedback was tested through the AWINIC driver using the `zte_vibrator` `duration_aw` / `activate_aw` path.
+- ADB sideload mode was fixed and tested. The host now detects the device as `sideload` after starting sideload from TWRP.
+- Full ZIP sideload installation still needs a harmless test package before marking the complete install flow as fully verified.
