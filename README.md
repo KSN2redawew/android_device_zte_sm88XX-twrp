@@ -27,10 +27,10 @@ Works:
 - [X] ADB
 - [X] Display
 - [X] Decryption
-- Fasbootd (no work)
+- [X] Fasbootd 
 - [X] Flashing
 - [X] MTP
-- Sideload (?)
+- [X] Sideload 
 - [X] USB OTG
 - [X] Touchscreen
 
