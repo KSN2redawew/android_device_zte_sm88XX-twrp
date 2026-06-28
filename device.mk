@@ -28,6 +28,11 @@ PRODUCT_USE_DYNAMIC_PARTITIONS := true
 PRODUCT_PACKAGES += \
     fastbootd
 
+# Wi-Fi
+PRODUCT_PACKAGES += \
+    wpa_cli_recovery \
+    wpa_supplicant_recovery
+
 # Kernel
 PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS   := false
 PRODUCT_ENABLE_UFFD_GC                          := true

@@ -43,6 +43,7 @@ jobs:
           echo "Lunch: twrp_${{ github.event.inputs.LUNCH_TARGET }}"
           echo "Build target: ${{ github.event.inputs.BUILD_PARTITION }}image"
           echo "Run: ${{ github.run_id }}"
+          df -h
 
       - name: Cleanup
         run: |
@@ -70,6 +71,13 @@ jobs:
             "$HOME/.cache"
           docker system prune -af || true
           df -h
+          root_size_gb="$(df -BG / | awk 'NR==2 {gsub("G","",$2); print $2}')"
+          root_avail_gb="$(df -BG / | awk 'NR==2 {gsub("G","",$4); print $4}')"
+          if [ "${root_size_gb}" -lt 120 ]; then
+            echo "Runner root filesystem is too small for this TWRP build: ${root_size_gb}G total, ${root_avail_gb}G available."
+            echo "Re-run the workflow until GitHub assigns a 145G runner."
+            exit 1
+          fi
 
       - name: Install packages
         run: |
@@ -88,18 +96,98 @@ jobs:
       - name: Setup swap
         run: |
           sudo swapoff -a || true
-          sudo fallocate -l 16G /swapfile
+          sudo fallocate -l 24G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
           free -h
+          swapon --show || true
+          df -h
 
       - name: Sync source
         run: |
+          set -e
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           repo init --depth=1 -u "${{ github.event.inputs.TWRP_MANIFEST_URL }}" -b "${{ github.event.inputs.TWRP_MANIFEST_BRANCH }}"
-          repo sync -c --force-sync --no-clone-bundle --no-tags -j"$(nproc)"
+          repo sync -c --force-sync --no-clone-bundle --no-tags -j4 &
+          sync_pid=$!
+          (
+            while kill -0 "${sync_pid}" 2>/dev/null; do
+              echo "Repo sync still running at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              sleep 300
+            done
+          ) &
+          heartbeat_pid=$!
+          set +e
+          wait "${sync_pid}"
+          sync_status=$?
+          kill "${heartbeat_pid}" 2>/dev/null || true
+          wait "${heartbeat_pid}" 2>/dev/null || true
+          set -e
+          test "${sync_status}" -eq 0
+
+      - name: Restore wpa_supplicant source
+        run: |
+          set -e
+          if [ ! -d external/wpa_supplicant_8 ]; then
+            git clone --depth=1 --branch android-16.0.0_r1 \
+              https://android.googlesource.com/platform/external/wpa_supplicant_8 \
+              external/wpa_supplicant_8
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bp = Path("external/wpa_supplicant_8/wpa_supplicant/Android.bp")
+          text = bp.read_text()
+          marker = "wpa_supplicant_recovery"
+          if marker not in text:
+              text += r'''
+
+          cc_binary {
+              name: "wpa_cli_recovery",
+              recovery: true,
+              srcs: [
+                  "wpa_cli.c",
+                  "src/common/cli.c",
+                  "src/common/wpa_ctrl.c",
+                  "src/utils/common.c",
+                  "src/utils/edit.c",
+                  "src/utils/eloop.c",
+                  "src/utils/os_unix.c",
+                  "src/utils/wpa_debug.c",
+              ],
+              shared_libs: [
+                  "libcutils",
+                  "liblog",
+              ],
+              defaults: [
+                  "wpa_supplicant_no_aidl_cflags_default",
+                  "wpa_supplicant_includes_default",
+              ],
+          }
+
+          cc_binary {
+              name: "wpa_supplicant_recovery",
+              recovery: true,
+              shared_libs: [
+                  "libc",
+                  "libcrypto",
+                  "libcutils",
+                  "libkeystore-engine-wifi-hidl",
+                  "liblog",
+                  "libnl",
+                  "libssl",
+              ],
+              defaults: [
+                  "wpa_supplicant_srcs_default",
+                  "wpa_supplicant_no_aidl_cflags_default",
+                  "wpa_supplicant_includes_default",
+              ],
+          }
+          '''
+              bp.write_text(text)
+          PY
 
       - name: Check out device tree
         uses: actions/checkout@v4
@@ -154,17 +242,74 @@ jobs:
           events.write_text(text)
           PY
 
+      - name: Patch recovery haptics for NX809J
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+
+          events = Path("bootable/recovery/minuitwrp/events.cpp")
+          text = events.read_text()
+          old = (
+              '#define LEDS_HAPTICS_DURATION_FILE\t"/sys/class/leds/vibrator/duration"\n'
+              '#define LEDS_HAPTICS_ACTIVATE_FILE\t"/sys/class/leds/vibrator/activate"\n'
+          )
+          new = (
+              '#define LEDS_HAPTICS_DURATION_FILE\t"/sys/class/leds/zte_vibrator/duration_aw"\n'
+              '#define LEDS_HAPTICS_ACTIVATE_FILE\t"/sys/class/leds/zte_vibrator/activate_aw"\n'
+          )
+          if old not in text:
+              raise SystemExit("events.cpp LED haptics path block not found")
+          events.write_text(text.replace(old, new))
+          PY
+
       - name: Build TWRP
         run: |
           set -e
+          mkdir -p artifacts
           export USE_CCACHE=0
-          export SOONG_UI_NINJA_ARGS="-j4"
+          export SOONG_UI_NINJA_ARGS="-j1"
           source build/envsetup.sh
           lunch "twrp_${{ github.event.inputs.LUNCH_TARGET }}"
-          m -j4 "${{ github.event.inputs.BUILD_PARTITION }}image"
-          mkdir -p artifacts
+          {
+            echo "Disk before build:"
+            df -h
+            echo "Memory before build:"
+            free -h
+            m -j1 "${{ github.event.inputs.BUILD_PARTITION }}image" &
+            build_pid=$!
+            (
+              while kill -0 "${build_pid}" 2>/dev/null; do
+                echo "Build heartbeat at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                ps -o pid,ppid,etime,%cpu,%mem,rss,cmd -p "${build_pid}" || true
+                free -h || true
+                df -h / || true
+                sleep 60
+              done
+            ) &
+            heartbeat_pid=$!
+            set +e
+            wait "${build_pid}"
+            build_status=$?
+            kill "${heartbeat_pid}" 2>/dev/null || true
+            wait "${heartbeat_pid}" 2>/dev/null || true
+            set -e
+            test "${build_status}" -eq 0
+            echo "Disk after build:"
+            df -h
+            echo "Memory after build:"
+            free -h
+          } 2>&1 | tee artifacts/build.log
+          test "${PIPESTATUS[0]}" -eq 0
           cp "out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_PARTITION }}.img" \
              "artifacts/TWRP-3.7.1-16-${{ github.event.inputs.DEVICE_NAME }}-${{ github.event.inputs.BUILD_PARTITION }}-${{ github.run_id }}.img"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TWRP-build-log-${{ github.run_id }}
+          path: artifacts/build.log
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -25,6 +25,9 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+import /init.recovery.wlan.rc
+import /init.recovery.haptics.rc
+
 on init
     write /sys/fs/selinux/checkreqprot 0
 
