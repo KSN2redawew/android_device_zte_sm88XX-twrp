@@ -14,7 +14,7 @@ git clone --depth=1 https://github.com/KSN2redawew/android_device_zte_sm88XX-twr
 
 ```shell
 source build/envsetup.sh
-lunch twrp_/sm88XX
+lunch twrp_sm88XX-eng
 m recoveryimage
 ```
 
